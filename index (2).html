@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; background: #f8f9fa; }
+  h2 { color: #333; }
+  .rate-box { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; white-space: pre-wrap; font-size: 13px; max-height: 250px; overflow-y: auto; }
+  label { display: block; margin-top: 12px; font-weight: bold; font-size: 13px; }
+  input { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+  button { margin-top: 20px; padding: 10px 20px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; width: 100%; }
+  button:hover { background: #1565c0; }
+  button:disabled { background: #aaa; }
+  #statusMsg { margin-top: 10px; font-size: 13px; }
+</style>
+<script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+</head>
+<body>
+
+<h2>Select Shipping Service</h2>
+<div class="rate-box" id="ratesDisplay">Loading rates...</div>
+
+<label>Selected Service (e.g. DELHIVERY — surface)</label>
+<input type="text" id="serviceInput" placeholder="CARRIER — service">
+
+<label>Price (INR)</label>
+<input type="number" id="priceInput" placeholder="e.g. 75">
+
+<button id="submitBtn" onclick="submitRate()">Generate Label</button>
+<div id="statusMsg"></div>
+
+<script>
+var recordId = null;
+
+ZOHO.embeddedApp.on("PageLoad", function(data){
+  document.getElementById("ratesDisplay").innerText = "DEBUG data: " + JSON.stringify(data);
+  if(Array.isArray(data.EntityId)){
+    recordId = data.EntityId[0];
+  } else {
+    recordId = data.EntityId;
+  }
+  ZOHO.CRM.API.getRecord({Entity:"Seznik_Automation", RecordID: recordId}).then(function(response){
+    var record = response.data[0];
+    var rates = record.Available_Rates || "No rates fetched yet.";
+    document.getElementById("ratesDisplay").innerText = rates;
+  });
+});
+
+ZOHO.embeddedApp.init();
+
+function submitRate(){
+  var service = document.getElementById("serviceInput").value.trim();
+  var price = document.getElementById("priceInput").value.trim();
+  var statusDiv = document.getElementById("statusMsg");
+
+  if(service === "" || price === ""){
+    statusDiv.innerHTML = "<span style='color:red;'>Please fill both fields.</span>";
+    return;
+  }
+
+  document.getElementById("submitBtn").disabled = true;
+  statusDiv.innerHTML = "Saving...";
+
+  var recordData = {
+    "Selected_Service": service,
+    "Quoted_Price": parseFloat(price),
+    "Shipping_Status": "Pending - Ready to Ship"
+  };
+
+  ZOHO.CRM.API.updateRecord({
+    Entity: "Seznik_Automation",
+    APIData: Object.assign({id: recordId}, recordData),
+    Trigger: ["workflow"]
+  }).then(function(response){
+    statusDiv.innerHTML = "<span style='color:green;'>Saved! Label will be generated shortly.</span>";
+    setTimeout(function(){
+      ZOHO.CRM.UI.Popup.closeReload();
+    }, 1500);
+  }).catch(function(err){
+    statusDiv.innerHTML = "<span style='color:red;'>Error: " + JSON.stringify(err) + "</span>";
+    document.getElementById("submitBtn").disabled = false;
+  });
+}
+</script>
+
+</body>
+</html>
