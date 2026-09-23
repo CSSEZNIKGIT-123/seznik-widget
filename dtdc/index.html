@@ -67,6 +67,10 @@ function buildDropdown(rateText){
     o.text = found[j];
     sel.add(o);
   }
+  // default to Surface when it runs on this lane
+  if(found.indexOf("B2C SMART EXPRESS") > -1){
+    sel.value = "B2C SMART EXPRESS";
+  }
 }
 
 function submitRate(){
