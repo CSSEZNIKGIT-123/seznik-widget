@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Seznik Support Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: sticky filter bar, KPI strip, then a two-column analysis grid, then the record list */
+:root{
+  --bg:#F3F5F7; --surface:#FFFFFF; --ink:#16212B; --muted:#5D6B78; --faint:#94A1AD;
+  --line:#E2E7EC; --accent:#1F5C8A; --accent-soft:#E4EEF6;
+  --good:#1E8A5A; --good-soft:#E3F3EA; --bad:#C2412D; --bad-soft:#FBE9E5; --warn:#B7791F; --warn-soft:#FBF1DE;
+  --p1:#4C5FD5; --p2:#0F8B8D; --p3:#D9822B;
+  --font:"Figtree",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--font)}
+button,select,input{font:inherit;color:inherit}
+.wrap{padding:16px 20px 40px;max-width:1600px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{font-size:20px;font-weight:700;margin:0;letter-spacing:-.01em}
+header .sub{color:var(--muted);font-size:12.5px}
+header .spacer{flex:1}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;cursor:pointer;display:inline-flex;gap:6px;align-items:center;font-weight:500}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:focus-visible,select:focus-visible,input:focus-visible,.chip:focus-visible,.cell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.filters{position:sticky;top:0;z-index:5;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.f label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.f select,.f input{border:1px solid var(--line);border-radius:7px;padding:6px 8px;background:var(--surface);min-width:120px;max-width:200px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer;background:var(--surface);font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.chip .dot{width:8px;height:8px;border-radius:50%}
+.chip[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.active-tags{display:flex;gap:6px;flex-wrap:wrap;width:100%}
+.tag{background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;cursor:pointer}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:4px;cursor:pointer;text-align:left}
+.kpi:hover{border-color:var(--accent)}
+.kpi .lbl{font-size:12px;color:var(--muted);font-weight:600}
+.kpi .val{font:500 26px/1.1 var(--mono);font-variant-numeric:tabular-nums}
+.kpi .row{display:flex;justify-content:space-between;align-items:flex-end;gap:8px}
+.delta{white-space:nowrap;font-size:12px;font-weight:600;border-radius:6px;padding:1px 6px}
+.delta.good{background:var(--good-soft);color:var(--good)} .delta.bad{background:var(--bad-soft);color:var(--bad)} .delta.flat{background:var(--bg);color:var(--muted)}
+.kpi .note{font-size:11.5px;color:var(--faint)}
+.kpi.alert{border-color:var(--bad);background:var(--bad-soft)}
+.kpi.alert .val{color:var(--bad)}
+
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;min-width:0}
+.card h2{font-size:14.5px;margin:0 0 2px;font-weight:700}
+.card .hint{font-size:12px;color:var(--muted);margin:0 0 12px}
+.span-7{grid-column:span 7}.span-5{grid-column:span 5}.span-12{grid-column:span 12}.span-6{grid-column:span 6}.span-4{grid-column:span 4}.span-8{grid-column:span 8}
+@media (max-width:1100px){.span-7,.span-5,.span-6,.span-4,.span-8{grid-column:span 12}}
+.scroll{overflow-x:auto}
+
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;font-size:13px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;cursor:pointer;user-select:none}
+th:first-child,td:first-child{text-align:left}
+tr.unassigned td{color:var(--bad);font-weight:600}
+.heat td.cell{cursor:pointer;font-family:var(--mono);text-align:center;border:2px solid var(--surface);border-radius:6px}
+.heat td.cell.sel{outline:2px solid var(--ink)}
+.heat th{text-align:center;white-space:normal;min-width:74px;line-height:1.2}
+.heat th:first-child{text-align:left}
+.bar{height:8px;border-radius:4px;background:var(--accent);display:block}
+.hbar{display:grid;grid-template-columns:minmax(0,190px) 1fr 44px;gap:10px;align-items:center;padding:4px 0;cursor:pointer}
+.hbar .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.hbar .track{background:var(--bg);border-radius:4px;height:14px;overflow:hidden;display:flex}
+.hbar .n{font:500 12.5px var(--mono);text-align:right}
+.hbar:hover .name{color:var(--accent)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.chartbox{position:relative;height:260px}
+
+.rec td{text-align:left}
+.rec td.num{text-align:right}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;background:var(--bg);color:var(--muted)}
+.pill.open{background:var(--warn-soft);color:var(--warn)} .pill.closed{background:var(--good-soft);color:var(--good)} .pill.none{background:var(--bad-soft);color:var(--bad)}
+.link{color:var(--accent);cursor:pointer;font-weight:600;background:none;border:0;padding:0}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px;color:var(--muted);font-size:12.5px}
+.empty{color:var(--faint);padding:24px 0;text-align:center}
+
+.state{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:28px;text-align:center;color:var(--muted)}
+.state.err{border-color:var(--bad);color:var(--bad)}
+.spin{width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:sp 0.8s linear infinite;vertical-align:-4px;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+
+.drawer{position:fixed;top:0;right:0;height:100%;width:min(420px,100%);background:var(--surface);border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(0,0,0,.08);z-index:20;padding:18px;overflow:auto;display:flex;flex-direction:column;gap:14px}
+.drawer h3{margin:0;font-size:16px}
+.drawer fieldset{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.drawer legend{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:0 4px}
+.drawer label{display:flex;gap:8px;align-items:center;font-size:13px}
+.drawer textarea{width:100%;min-height:60px;border:1px solid var(--line);border-radius:7px;padding:6px;font:12.5px var(--mono)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1 id="title">Seznik Support Desk</h1>
+      <div class="sub" id="updated">Loading…</div>
+    </div>
+    <span class="spacer"></span>
+    <button class="btn" id="btnExport" type="button">Export CSV</button>
+    <button class="btn" id="btnSettings" type="button">Customize</button>
+    <button class="btn primary" id="btnRefresh" type="button">Refresh</button>
+  </header>
+
+  <div class="filters" id="filters">
+    <div class="f"><label for="fPeriod">Period</label>
+      <select id="fPeriod">
+        <option value="today">Today</option><option value="yesterday">Yesterday</option>
+        <option value="thisweek">This week</option><option value="last7">Last 7 days</option>
+        <option value="thismonth">This month</option><option value="last30">Last 30 days</option>
+        <option value="custom">Custom range</option>
+      </select></div>
+    <div class="f" id="customWrap" hidden><label for="fFrom">From</label><input type="date" id="fFrom"></div>
+    <div class="f" id="customWrap2" hidden><label for="fTo">To</label><input type="date" id="fTo"></div>
+    <div class="f"><label>Product</label><div class="chips" id="fProducts"></div></div>
+    <div class="f"><label for="fExec">Customer executive</label><select id="fExec"></select></div>
+    <div class="f"><label for="fStage">Process stage</label><select id="fStage"></select></div>
+    <div class="f"><label for="fStatus">Issue status</label><select id="fStatus"></select></div>
+    <div class="f"><label for="fCat">Issue category</label><select id="fCat"></select></div>
+    <div class="f"><label for="fContact">Contact status</label><select id="fContact"></select></div>
+    <div class="f"><label for="fSearch">Search</label><input id="fSearch" type="search" placeholder="Name or record ID"></div>
+    <button class="btn" id="btnReset" type="button">Reset</button>
+    <div class="active-tags" id="tags"></div>
+  </div>
+
+  <div id="stateBox" class="state"><span class="spin"></span>Loading issues from CRM…</div>
+
+  <div id="main" hidden>
+    <section class="kpis" id="kpis" data-section="kpis"></section>
+    <div class="grid" style="margin-top:12px">
+      <section class="card span-7" data-section="heat">
+        <h2>Open backlog by product and stage</h2>
+        <p class="hint">Every issue not yet closed, whatever its date. Click a cell to list those records.</p>
+        <div class="scroll" id="heat"></div>
+      </section>
+      <section class="card span-5" data-section="exec">
+        <h2>Executive workload</h2>
+        <p class="hint" id="execHint">Selected period. Click a name to filter. Click a header to sort.</p>
+        <div class="scroll" id="exec"></div>
+      </section>
+      <section class="card span-8" data-section="trend">
+        <h2>Daily issues by product</h2>
+        <p class="hint">Issues by Issue ETA date in the selected period (at least 14 days shown).</p>
+        <div class="chartbox"><canvas id="trend"></canvas></div>
+      </section>
+      <section class="card span-4" data-section="contact">
+        <h2>Customer contact status</h2>
+        <p class="hint">Issues in the selected period.</p>
+        <div id="contact"></div>
+      </section>
+      <section class="card span-6" data-section="cats">
+        <h2>Top issue categories</h2>
+        <p class="hint">Issues in the selected period, split by product.</p>
+        <div id="cats"></div>
+      </section>
+      <section class="card span-6" data-section="resolution">
+        <h2>Resolution method</h2>
+        <p class="hint">How issues in the selected period are being resolved.</p>
+        <div id="resolution"></div>
+      </section>
+      <section class="card span-12" data-section="records">
+        <h2 id="recTitle">Records</h2>
+        <p class="hint" id="recHint"></p>
+        <div class="scroll" id="records"></div>
+        <div class="pager" id="pager"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<aside class="drawer" id="drawer" hidden aria-label="Customize dashboard">
+  <div style="display:flex;justify-content:space-between;align-items:center"><h3>Customize</h3><button class="btn" id="btnClose" type="button">Close</button></div>
+  <fieldset><legend>Show sections</legend><div id="setSections"></div></fieldset>
+  <fieldset><legend>KPI cards</legend><div id="setKpis"></div></fieldset>
+  <fieldset><legend>Defaults</legend>
+    <label>Default period <select id="setPeriod"></select></label>
+    <label>Auto-refresh <select id="setAuto"><option value="0">Off</option><option value="5">Every 5 min</option><option value="10">Every 10 min</option><option value="15">Every 15 min</option></select></label>
+    <label>Rows per page <select id="setRows"><option>25</option><option>50</option><option>100</option></select></label>
+  </fieldset>
+  <fieldset><legend>Stages that count as closed (one per line)</legend><textarea id="setClosed"></textarea></fieldset>
+  <fieldset><legend>Products tracked (one per line)</legend><textarea id="setProducts"></textarea></fieldset>
+  <div style="display:flex;gap:8px"><button class="btn primary" id="btnSave" type="button">Save and reload</button><button class="btn" id="btnDefaults" type="button">Restore defaults</button></div>
+  <p class="hint" style="font-size:12px;color:var(--muted)">Settings are saved in this browser for you only.</p>
+</aside>
+
+<script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+/* ================= CONFIG — edit here to change the dashboard for everyone ================= */
+const CONFIG = {
+  module: "Seznik_Automation",
+  crmOrgUrl: "https://crm.zoho.in/crm/org60066664241/tab/CustomModule2/",
+  products: ["Mini Printer", "Label Printer & A4 Printer", "Vacuum Cleaner"],
+  productColors: { "Mini Printer": "#4C5FD5", "Label Printer & A4 Printer": "#0F8B8D", "Vacuum Cleaner": "#D9822B" },
+  productShort: { "Mini Printer": "Mini printer", "Label Printer & A4 Printer": "Label & A4", "Vacuum Cleaner": "Vacuum" },
+  closedStages: ["Closed", "Refund Done"],
+  // Order of columns in the backlog heat map; stages not listed are added at the end
+  stageOrder: ["New Issue","Issue Ongoing","Assistance Call","Difference Amount","Pickup Decision","Pickup / Dispatch Details","Pickup Processing","Dispatch Details","Dispatch Processing","Replacement Processing","Exchange Processing","Refund Processing","Warehouse","MCF"],
+  defaultPeriod: "today",
+  fields: {
+    name: "Name", product: "Issue_Product", stage: "Process_Stage", status: "Issue_Status",
+    category: "Issue_Category", contact: "Customer_Contact_Status", exec: "Issue_Working_Agent.Name",
+    issueDate: "ETA", created: "Created_Time",
+    fu1: "Follow_Up_1_Date1", fu2: "Follow_Up_2_Date2", fu3: "Follow_Up_3_Date3",
+    pickup: "Pickup_Creation_Date", dispatch: "Date_of_Shipment_Creation", refund: "Refund_Initiate_Date",
+    refundAmt: "Cashback_Amount", resolution: "Issue_Requires_Replacement_Exchange_Refund1",
+    pickupStatus: "Pickup_Status", shipStatus: "Shipping_Status"
+  },
+  maxPages: 8 // 2,000 records per page
+};
+const KPI_DEFS = [
+  { key:"issues", label:"Issues", note:"by Issue ETA", objective:"down" },
+  { key:"unassigned", label:"Unassigned open", note:"open, no executive", objective:"down", current:true },
+  { key:"open", label:"Open backlog", note:"not closed, any date", objective:"down", current:true },
+  { key:"followups", label:"Follow-ups", note:"Follow-up 1/2/3 dates", objective:"none" },
+  { key:"pickups", label:"Pickups created", note:"Pickup creation date", objective:"up" },
+  { key:"dispatches", label:"Dispatches created", note:"Shipment creation date", objective:"up" },
+  { key:"refunds", label:"Refunds initiated", note:"", objective:"down" }
+];
+const SECTIONS = { kpis:"KPI cards", heat:"Backlog heat map", exec:"Executive workload", trend:"Daily trend", contact:"Contact status", cats:"Issue categories", resolution:"Resolution method", records:"Record list" };
+/* ========================================================================================== */
+
+const LS_KEY = "seznikSupportDesk.v1";
+const defaultsSettings = () => ({
+  sections: Object.fromEntries(Object.keys(SECTIONS).map(k => [k, true])),
+  kpis: Object.fromEntries(KPI_DEFS.map(k => [k.key, true])),
+  period: CONFIG.defaultPeriod, auto: "0", rows: "25",
+  closed: CONFIG.closedStages.slice(), products: CONFIG.products.slice()
+});
+let SET = (() => { try { return Object.assign(defaultsSettings(), JSON.parse(localStorage.getItem(LS_KEY) || "{}")); } catch (e) { return defaultsSettings(); } })();
+const saveSettings = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(SET)); } catch (e) {} };
+
+const F = CONFIG.fields;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const fmt = n => Number(n || 0).toLocaleString("en-IN");
+const inr = n => "₹" + Math.round(n || 0).toLocaleString("en-IN");
+
+/* ---------- dates (all in IST, as YYYY-MM-DD keys) ---------- */
+function todayKey() {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  return p; // en-CA gives YYYY-MM-DD
+}
+const toUTC = k => { const [y,m,d] = k.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+const fromUTC = t => new Date(t).toISOString().slice(0, 10);
+const addDays = (k, n) => fromUTC(toUTC(k) + n * 864e5);
+const daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 864e5);
+const dKey = v => (v ? String(v).slice(0, 10) : null);
+const label = k => new Date(toUTC(k)).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
+
+function periodRange(p) {
+  const t = todayKey();
+  switch (p) {
+    case "today": return [t, t];
+    case "yesterday": return [addDays(t, -1), addDays(t, -1)];
+    case "thisweek": { const dow = (new Date(toUTC(t)).getUTCDay() + 6) % 7; return [addDays(t, -dow), t]; }
+    case "last7": return [addDays(t, -6), t];
+    case "thismonth": return [t.slice(0, 8) + "01", t];
+    case "last30": return [addDays(t, -29), t];
+    case "custom": {
+      const a = $("fFrom").value || addDays(t, -6), b = $("fTo").value || t;
+      return a <= b ? [a, b] : [b, a];
+    }
+  }
+  return [t, t];
+}
+const PERIOD_NAMES = { today:"Today", yesterday:"Yesterday", thisweek:"This week", last7:"Last 7 days", thismonth:"This month", last30:"Last 30 days", custom:"Custom range" };
+
+/* ---------- data ---------- */
+let RECORDS = [];          // merged, de-duplicated
+let LOADED_FROM = null;    // earliest date the activity query covered
+let chart = null;
+const STATE = { cell: null, kpi: null, page: 0, sortKey: "open", sortDir: -1 };
+
+function inList(arr) { return "(" + arr.map(v => "'" + String(v).replace(/'/g, "\\'") + "'").join(",") + ")"; }
+const SELECT = ["id", ...new Set(Object.values(F))].join(", ");
+
+async function coqlAll(where) {
+  let out = [], offset = 0;
+  for (let page = 0; page < CONFIG.maxPages; page++) {
+    const q = `select ${SELECT} from ${CONFIG.module} where ${where} limit 2000 offset ${offset}`;
+    const res = await ZOHO.CRM.API.coql({ select_query: q });
+    if (res && res.code && res.status === "error") throw new Error(res.message || res.code);
+    const rows = (res && (res.data || (res.response && res.response.data))) || [];
+    out = out.concat(rows);
+    const more = res && res.info && res.info.more_records;
+    if (!more || rows.length === 0) break;
+    offset += 2000;
+  }
+  return out;
+}
+
+async function loadData(fromKey) {
+  const prod = `${F.product} in ${inList(SET.products)}`;
+  const d = fromKey;
+  const activity = `(${prod} and (${F.issueDate} >= '${d}T00:00:00+05:30' or (${F.fu1} >= '${d}' or (${F.fu2} >= '${d}' or (${F.fu3} >= '${d}' or (${F.pickup} >= '${d}' or (${F.dispatch} >= '${d}' or ${F.refund} >= '${d}'))))))) `;
+  const backlog = `(${prod} and ${F.stage} not in ${inList(SET.closed)})`;
+  const [a, b] = await Promise.all([coqlAll(activity), coqlAll(backlog)]);
+  const map = new Map();
+  for (const r of a.concat(b)) map.set(r.id, r);
+  RECORDS = [...map.values()];
+  LOADED_FROM = fromKey;
+}
+
+/* ---------- derived ---------- */
+const isOpen = r => !SET.closed.includes(r[F.stage]);
+const execOf = r => r[F.exec] || null;
+const issueDay = r => dKey(r[F.issueDate]) || dKey(r[F.created]);
+const inR = (k, a, b) => k && k >= a && k <= b;
+const METRIC_TEST = {
+  issues: (r, a, b) => inR(issueDay(r), a, b),
+  followups: (r, a, b) => inR(dKey(r[F.fu1]), a, b) || inR(dKey(r[F.fu2]), a, b) || inR(dKey(r[F.fu3]), a, b),
+  pickups: (r, a, b) => inR(dKey(r[F.pickup]), a, b),
+  dispatches: (r, a, b) => inR(dKey(r[F.dispatch]), a, b),
+  refunds: (r, a, b) => inR(dKey(r[F.refund]), a, b),
+  unassigned: r => isOpen(r) && !execOf(r),
+  open: r => isOpen(r)
+};
+const METRIC_DAY = {
+  issues: r => [issueDay(r)], followups: r => [dKey(r[F.fu1]), dKey(r[F.fu2]), dKey(r[F.fu3])],
+  pickups: r => [dKey(r[F.pickup])], dispatches: r => [dKey(r[F.dispatch])], refunds: r => [dKey(r[F.refund])]
+};
+
+function filterVals() {
+  return {
+    products: [...document.querySelectorAll("#fProducts .chip[aria-pressed='true']")].map(c => c.dataset.v),
+    exec: $("fExec").value, stage: $("fStage").value, status: $("fStatus").value,
+    cat: $("fCat").value, contact: $("fContact").value, q: $("fSearch").value.trim().toLowerCase()
+  };
+}
+function passesFilters(r, fv) {
+  if (fv.products.length && !fv.products.includes(r[F.product])) return false;
+  if (fv.exec === "__none" ? execOf(r) : (fv.exec && execOf(r) !== fv.exec)) return false;
+  if (fv.stage && r[F.stage] !== fv.stage) return false;
+  if (fv.status && r[F.status] !== fv.status) return false;
+  if (fv.cat && r[F.category] !== fv.cat) return false;
+  if (fv.contact && r[F.contact] !== fv.contact) return false;
+  if (fv.q && !((r[F.name] || "").toLowerCase().includes(fv.q) || String(r.id).includes(fv.q))) return false;
+  return true;
+}
+
+/* ---------- filter bar ---------- */
+function buildFilters() {
+  $("fProducts").innerHTML = SET.products.map(p =>
+    `<button type="button" class="chip" aria-pressed="false" data-v="${esc(p)}"><span class="dot" style="background:${CONFIG.productColors[p] || "#888"}"></span>${esc(CONFIG.productShort[p] || p)}</button>`).join("");
+  document.querySelectorAll("#fProducts .chip").forEach(c => c.onclick = () => { c.setAttribute("aria-pressed", c.getAttribute("aria-pressed") === "true" ? "false" : "true"); onFilter(); });
+  fillSelect("fExec", [...new Set(RECORDS.map(execOf).filter(Boolean))].sort(), "All executives", [["__none", "Unassigned"]]);
+  fillSelect("fStage", [...new Set(RECORDS.map(r => r[F.stage]).filter(Boolean))].sort(), "All stages");
+  fillSelect("fStatus", [...new Set(RECORDS.map(r => r[F.status]).filter(Boolean))].sort(), "All statuses");
+  fillSelect("fCat", [...new Set(RECORDS.map(r => r[F.category]).filter(Boolean))].sort(), "All categories");
+  fillSelect("fContact", [...new Set(RECORDS.map(r => r[F.contact]).filter(Boolean))].sort(), "All");
+}
+function fillSelect(id, values, allLabel, extra = []) {
+  const el = $(id), cur = el.value;
+  el.innerHTML = `<option value="">${allLabel}</option>` + extra.map(([v, l]) => `<option value="${v}">${l}</option>`).join("") +
+    values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  if ([...el.options].some(o => o.value === cur)) el.value = cur;
+}
+function renderTags(fv) {
+  const t = [];
+  if (STATE.cell) t.push(["cell", `Backlog: ${CONFIG.productShort[STATE.cell.p] || STATE.cell.p} · ${STATE.cell.s} ✕`]);
+  if (STATE.kpi) t.push(["kpi", `KPI: ${KPI_DEFS.find(k => k.key === STATE.kpi).label} ✕`]);
+  $("tags").innerHTML = t.map(([k, l]) => `<span class="tag" data-k="${k}" role="button" tabindex="0">${esc(l)}</span>`).join("");
+  $("tags").querySelectorAll(".tag").forEach(el => el.onclick = () => { STATE[el.dataset.k] = null; STATE.page = 0; render(); });
+}
+
+/* ---------- render ---------- */
+function render() {
+  const fv = filterVals();
+  const [a, b] = periodRange($("fPeriod").value);
+  const len = daysBetween(a, b) + 1;
+  const pa = addDays(a, -len), pb = addDays(a, -1);
+  const rows = RECORDS.filter(r => passesFilters(r, fv));
+  renderTags(fv);
+  for (const [k, on] of Object.entries(SET.sections)) document.querySelectorAll(`[data-section="${k}"]`).forEach(el => el.hidden = !on);
+
+  renderKpis(rows, a, b, pa, pb, len);
+  renderHeat(rows);
+  renderExec(rows, a, b);
+  renderTrend(rows, a, b);
+  const periodIssues = rows.filter(r => METRIC_TEST.issues(r, a, b));
+  renderHBars("contact", countBy(periodIssues, r => r[F.contact] || "Not set"), null, "fContact");
+  renderHBars("cats", countBy(periodIssues, r => r[F.category] || "Not set"), periodIssues.filter(r => r), "fCat", 10);
+  renderHBars("resolution", countBy(periodIssues, r => r[F.resolution] || "Not set"), null, null, 10);
+  renderRecords(rows, a, b);
+  $("execHint").textContent = `${PERIOD_NAMES[$("fPeriod").value]} (${label(a)}${a !== b ? " – " + label(b) : ""}). Click a name to filter. Click a header to sort.`;
+}
+
+function countBy(rows, fn) { const m = new Map(); for (const r of rows) { const k = fn(r); m.set(k, (m.get(k) || 0) + 1); } return [...m.entries()].sort((x, y) => y[1] - x[1]); }
+
+function spark(series, color) {
+  const w = 90, h = 26, max = Math.max(1, ...series);
+  const pts = series.map((v, i) => `${(i / Math.max(1, series.length - 1)) * w},${h - 2 - (v / max) * (h - 4)}`);
+  const last = pts[pts.length - 1].split(",");
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polygon points="0,${h} ${pts.join(" ")} ${w},${h}" fill="${color}" opacity=".12"/><polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="1.6"/><circle cx="${last[0]}" cy="${last[1]}" r="2.4" fill="${color}"/></svg>`;
+}
+
+function renderKpis(rows, a, b, pa, pb, len) {
+  const sparkEnd = b, sparkStart = addDays(b, -Math.max(13, len - 1));
+  const days = []; for (let k = sparkStart; k <= sparkEnd; k = addDays(k, 1)) days.push(k);
+  $("kpis").innerHTML = KPI_DEFS.filter(k => SET.kpis[k.key]).map(k => {
+    const test = METRIC_TEST[k.key];
+    const cur = rows.filter(r => test(r, a, b));
+    let val = fmt(cur.length), deltaHtml = "", sp = "", note = k.note;
+    if (k.key === "refunds") note = inr(cur.reduce((s, r) => s + (Number(r[F.refundAmt]) || 0), 0)) + " refund amount";
+    if (!k.current) {
+      const prev = rows.filter(r => test(r, pa, pb)).length;
+      const diff = cur.length - prev;
+      const cls = diff === 0 || k.objective === "none" ? "flat" : ((diff > 0) === (k.objective === "up") ? "good" : "bad");
+      const pct = prev ? Math.abs(Math.round((diff / prev) * 100)) + "%" : (diff ? "new" : "0");
+      deltaHtml = `<span class="delta ${cls}" title="Previous period: ${prev}">${diff > 0 ? "▲" : diff < 0 ? "▼" : "•"} ${diff === 0 ? "same" : pct}</span>`;
+      const counts = Object.fromEntries(days.map(d => [d, 0]));
+      for (const r of rows) for (const d of new Set(METRIC_DAY[k.key](r))) if (d in counts) counts[d]++;
+      sp = spark(days.map(d => counts[d]), "var(--accent)");
+    } else {
+      sp = `<span class="note">right now</span>`;
+    }
+    const alert = k.key === "unassigned" && cur.length > 0 ? " alert" : "";
+    return `<button type="button" class="kpi${alert}" data-k="${k.key}" aria-pressed="${STATE.kpi === k.key}">
+      <span class="lbl">${esc(k.label)}</span>
+      <span class="row"><span class="val">${val}</span>${sp}</span>
+      <span class="row"><span class="note">${esc(note)}</span>${deltaHtml}</span></button>`;
+  }).join("");
+  $("kpis").querySelectorAll(".kpi").forEach(el => el.onclick = () => { STATE.kpi = STATE.kpi === el.dataset.k ? null : el.dataset.k; STATE.cell = null; STATE.page = 0; render(); jump(); });
+}
+
+function renderHeat(rows) {
+  const open = rows.filter(isOpen);
+  const stagesPresent = [...new Set(open.map(r => r[F.stage] || "Not set"))];
+  const stages = CONFIG.stageOrder.filter(s => stagesPresent.includes(s)).concat(stagesPresent.filter(s => !CONFIG.stageOrder.includes(s)));
+  if (!stages.length) { $("heat").innerHTML = `<div class="empty">No open issues for these filters.</div>`; return; }
+  const prods = SET.products;
+  const grid = {}; let max = 1;
+  for (const r of open) { const k = (r[F.product]) + "|" + (r[F.stage] || "Not set"); grid[k] = (grid[k] || 0) + 1; max = Math.max(max, grid[k]); }
+  const cell = (p, s) => {
+    const n = grid[p + "|" + s] || 0, pct = n ? 12 + Math.round((n / max) * 70) : 0;
+    const sel = STATE.cell && STATE.cell.p === p && STATE.cell.s === s ? " sel" : "";
+    const fg = pct > 50 ? "#fff" : "var(--ink)";
+    return `<td class="cell${sel}" tabindex="0" data-p="${esc(p)}" data-s="${esc(s)}" style="background:${n ? `color-mix(in srgb, var(--accent) ${pct}%, var(--surface))` : "var(--bg)"};color:${n ? fg : "var(--faint)"}">${n || "·"}</td>`;
+  };
+  let html = `<table class="heat"><thead><tr><th>Product</th>${stages.map(s => `<th>${esc(s)}</th>`).join("")}<th>Total</th></tr></thead><tbody>`;
+  for (const p of prods) {
+    const tot = open.filter(r => r[F.product] === p).length;
+    html += `<tr><td><span class="pill" style="background:color-mix(in srgb, ${CONFIG.productColors[p]} 15%, var(--surface));color:${CONFIG.productColors[p]}">${esc(CONFIG.productShort[p] || p)}</span></td>${stages.map(s => cell(p, s)).join("")}<td><b>${tot}</b></td></tr>`;
+  }
+  html += `<tr><td><b>All products</b></td>${stages.map(s => `<td style="text-align:center"><b>${open.filter(r => (r[F.stage] || "Not set") === s).length}</b></td>`).join("")}<td><b>${open.length}</b></td></tr></tbody></table>`;
+  $("heat").innerHTML = html;
+  $("heat").querySelectorAll("td.cell").forEach(td => {
+    const go = () => { const v = { p: td.dataset.p, s: td.dataset.s }; STATE.cell = STATE.cell && STATE.cell.p === v.p && STATE.cell.s === v.s ? null : v; STATE.kpi = null; STATE.page = 0; render(); jump(); };
+    td.onclick = go; td.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } };
+  });
+}
+
+function renderExec(rows, a, b) {
+  const by = new Map();
+  const get = n => { if (!by.has(n)) by.set(n, { name: n, open: 0, issues: 0, followups: 0, pickups: 0, dispatches: 0, refunds: 0 }); return by.get(n); };
+  for (const r of rows) {
+    const n = execOf(r) || "__none";
+    const o = get(n);
+    if (isOpen(r)) o.open++;
+    for (const k of ["issues", "followups", "pickups", "dispatches", "refunds"]) if (METRIC_TEST[k](r, a, b)) o[k]++;
+  }
+  let list = [...by.values()].filter(o => o.open + o.issues + o.followups + o.pickups + o.dispatches + o.refunds > 0);
+  const sk = STATE.sortKey, dir = STATE.sortDir;
+  list.sort((x, y) => { const v = sk === "name" ? x.name.localeCompare(y.name) : x[sk] - y[sk]; return dir < 0 ? -v : v; });
+  const none = list.find(o => o.name === "__none"); list = list.filter(o => o.name !== "__none"); if (none) list.unshift(none);
+  const maxOpen = Math.max(1, ...list.map(o => o.open));
+  const cols = [["name","Executive"],["open","Open"],["issues","Issues"],["followups","Follow-ups"],["pickups","Pickups"],["dispatches","Dispatch"],["refunds","Refunds"]];
+  if (!list.length) { $("exec").innerHTML = `<div class="empty">No activity for these filters.</div>`; return; }
+  $("exec").innerHTML = `<table><thead><tr>${cols.map(([k, l]) => `<th data-k="${k}">${l}${STATE.sortKey === k ? (STATE.sortDir < 0 ? " ↓" : " ↑") : ""}</th>`).join("")}<th style="min-width:70px"></th></tr></thead><tbody>` +
+    list.map(o => `<tr class="${o.name === "__none" ? "unassigned" : ""}"><td><button type="button" class="link" data-e="${esc(o.name)}">${o.name === "__none" ? "Unassigned" : esc(o.name)}</button></td><td>${o.open}</td><td>${o.issues}</td><td>${o.followups}</td><td>${o.pickups}</td><td>${o.dispatches}</td><td>${o.refunds}</td><td><span class="bar" style="width:${(o.open / maxOpen) * 100}%;${o.name === "__none" ? "background:var(--bad)" : ""}"></span></td></tr>`).join("") + `</tbody></table>`;
+  $("exec").querySelectorAll("th[data-k]").forEach(th => th.onclick = () => { const k = th.dataset.k; STATE.sortDir = STATE.sortKey === k ? -STATE.sortDir : (k === "name" ? 1 : -1); STATE.sortKey = k; render(); });
+  $("exec").querySelectorAll("button[data-e]").forEach(bt => bt.onclick = () => { $("fExec").value = $("fExec").value === bt.dataset.e ? "" : bt.dataset.e; onFilter(); });
+}
+
+function renderTrend(rows, a, b) {
+  const start = daysBetween(a, b) < 13 ? addDays(b, -13) : a;
+  const days = []; for (let k = start; k <= b; k = addDays(k, 1)) days.push(k);
+  const idx = Object.fromEntries(days.map((d, i) => [d, i]));
+  const datasets = SET.products.map(p => ({ label: CONFIG.productShort[p] || p, data: days.map(() => 0), backgroundColor: CONFIG.productColors[p] || "#888", borderRadius: 3, maxBarThickness: 28 }));
+  for (const r of rows) { const d = issueDay(r); const i = SET.products.indexOf(r[F.product]); if (d in idx && i >= 0) datasets[i].data[idx[d]]++; }
+  const css = getComputedStyle(document.documentElement);
+  const muted = css.getPropertyValue("--muted").trim(), line = css.getPropertyValue("--line").trim();
+  if (typeof Chart === "undefined") { $("trend").parentElement.innerHTML = `<div class="empty">Chart library could not load.</div>`; return; }
+  const data = { labels: days.map(label), datasets };
+  if (chart) { chart.data = data; chart.update(); return; }
+  chart = new Chart($("trend"), {
+    type: "bar", data,
+    options: { maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, color: muted, font: { family: "Figtree" } } } },
+      scales: { x: { stacked: true, grid: { display: false }, ticks: { color: muted, maxRotation: 0, autoSkip: true } },
+                y: { stacked: true, beginAtZero: true, grid: { color: line }, ticks: { color: muted, precision: 0 } } } }
+  });
+}
+
+function renderHBars(id, entries, splitRows, filterId, limit = 12) {
+  const el = $(id);
+  if (!entries.length) { el.innerHTML = `<div class="empty">No issues in this period.</div>`; return; }
+  const top = entries.slice(0, limit), max = Math.max(...top.map(e => e[1]));
+  el.innerHTML = top.map(([k, n]) => {
+    let segs;
+    if (splitRows) {
+      segs = SET.products.map(p => { const c = splitRows.filter(r => (r[F.category] || "Not set") === k && r[F.product] === p).length; return c ? `<span style="width:${(c / max) * 100}%;background:${CONFIG.productColors[p]}" title="${esc(CONFIG.productShort[p])}: ${c}"></span>` : ""; }).join("");
+    } else segs = `<span style="width:${(n / max) * 100}%;background:var(--accent)"></span>`;
+    return `<div class="hbar" ${filterId && k !== "Not set" ? `data-f="${filterId}" data-v="${esc(k)}" role="button" tabindex="0"` : ""}><span class="name" title="${esc(k)}">${esc(k)}</span><span class="track">${segs}</span><span class="n">${n}</span></div>`;
+  }).join("") + (splitRows ? `<div class="legend">${SET.products.map(p => `<span><i style="background:${CONFIG.productColors[p]}"></i>${esc(CONFIG.productShort[p] || p)}</span>`).join("")}</div>` : "");
+  el.querySelectorAll(".hbar[data-f]").forEach(h => h.onclick = () => { const s = $(h.dataset.f); s.value = s.value === h.dataset.v ? "" : h.dataset.v; onFilter(); });
+}
+
+let LAST_LIST = [];
+function renderRecords(rows, a, b) {
+  let list, title, hint;
+  if (STATE.cell) {
+    list = rows.filter(r => isOpen(r) && r[F.product] === STATE.cell.p && (r[F.stage] || "Not set") === STATE.cell.s);
+    title = `Open: ${CONFIG.productShort[STATE.cell.p] || STATE.cell.p} at ${STATE.cell.s}`; hint = "From the backlog heat map.";
+  } else if (STATE.kpi) {
+    const t = METRIC_TEST[STATE.kpi];
+    list = rows.filter(r => t(r, a, b)); title = KPI_DEFS.find(k => k.key === STATE.kpi).label; hint = "From the KPI card.";
+  } else {
+    list = rows.filter(r => METRIC_TEST.issues(r, a, b) || (isOpen(r) && !execOf(r)));
+    title = "Issues in period and unassigned open issues"; hint = "Click a KPI card or a heat map cell to change this list.";
+  }
+  list.sort((x, y) => (execOf(x) ? 1 : 0) - (execOf(y) ? 1 : 0) || String(issueDay(y)).localeCompare(String(issueDay(x))));
+  LAST_LIST = list;
+  $("recTitle").textContent = `${title} (${fmt(list.length)})`;
+  $("recHint").textContent = hint;
+  const per = Number(SET.rows) || 25, pages = Math.max(1, Math.ceil(list.length / per));
+  STATE.page = Math.min(STATE.page, pages - 1);
+  const slice = list.slice(STATE.page * per, STATE.page * per + per);
+  if (!slice.length) { $("records").innerHTML = `<div class="empty">No records for these filters.</div>`; $("pager").innerHTML = ""; return; }
+  $("records").innerHTML = `<table class="rec"><thead><tr><th>Name</th><th>Product</th><th>Executive</th><th>Stage</th><th>Issue status</th><th>Category</th><th>Contact</th><th>Issue ETA</th><th></th></tr></thead><tbody>` +
+    slice.map(r => `<tr><td>${esc(r[F.name] || r.id)}</td><td>${esc(CONFIG.productShort[r[F.product]] || r[F.product] || "")}</td>
+      <td>${execOf(r) ? esc(execOf(r)) : `<span class="pill none">Unassigned</span>`}</td>
+      <td><span class="pill ${isOpen(r) ? "open" : "closed"}">${esc(r[F.stage] || "Not set")}</span></td>
+      <td>${esc(r[F.status] || "")}</td><td>${esc(r[F.category] || "")}</td><td>${esc(r[F.contact] || "")}</td>
+      <td class="num">${issueDay(r) ? label(issueDay(r)) : ""}</td>
+      <td><button type="button" class="link" data-id="${esc(r.id)}">Open ↗</button></td></tr>`).join("") + `</tbody></table>`;
+  $("records").querySelectorAll("button[data-id]").forEach(bt => bt.onclick = () => openRecord(bt.dataset.id));
+  $("pager").innerHTML = `<span>Page ${STATE.page + 1} of ${pages}</span><button class="btn" type="button" id="pgPrev" ${STATE.page ? "" : "disabled"}>Previous</button><button class="btn" type="button" id="pgNext" ${STATE.page < pages - 1 ? "" : "disabled"}>Next</button>`;
+  $("pgPrev").onclick = () => { STATE.page--; render(); };
+  $("pgNext").onclick = () => { STATE.page++; render(); };
+}
+function openRecord(id) {
+  try { ZOHO.CRM.UI.Record.open({ Entity: CONFIG.module, RecordID: id }); }
+  catch (e) { window.open(CONFIG.crmOrgUrl + id, "_blank"); }
+}
+function jump() { if (SET.sections.records) document.querySelector('[data-section="records"]').scrollIntoView({ behavior: "smooth", block: "start" }); }
+
+function exportCsv() {
+  const cols = [["id","Record ID"],[F.name,"Name"],[F.product,"Product"],[F.exec,"Customer Executive"],[F.stage,"Process Stage"],[F.status,"Issue Status"],[F.category,"Issue Category"],[F.contact,"Contact Status"],[F.issueDate,"Issue ETA"],[F.pickup,"Pickup Created"],[F.dispatch,"Shipment Created"],[F.refund,"Refund Initiated"],[F.refundAmt,"Refund Amount"]];
+  const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = [cols.map(c => q(c[1])).join(",")].concat(LAST_LIST.map(r => cols.map(c => q(r[c[0]])).join(","))).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
+  a.download = `support-desk-${todayKey()}.csv`; document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ---------- flow ---------- */
+let autoTimer = null;
+async function refresh(force) {
+  const [a, b] = periodRange($("fPeriod").value);
+  const len = daysBetween(a, b) + 1;
+  const need = [addDays(a, -len), addDays(b, -13)].sort()[0];
+  if (!force && LOADED_FROM && LOADED_FROM <= need) { render(); return; }
+  const from = [need, addDays(todayKey(), -59)].sort()[0];
+  $("btnRefresh").disabled = true; $("btnRefresh").textContent = "Loading…";
+  try {
+    await loadData(from);
+    buildFilters();
+    $("stateBox").hidden = true; $("main").hidden = false;
+    $("updated").textContent = `${fmt(RECORDS.length)} issues loaded · updated ${new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}`;
+    render();
+  } catch (e) {
+    $("stateBox").hidden = false; $("stateBox").className = "state err";
+    $("stateBox").textContent = "Couldn't load issues from CRM: " + (e && (e.message || e.code) || e) + ". Check that you can open the Seznik Automation module, then press Refresh.";
+  } finally { $("btnRefresh").disabled = false; $("btnRefresh").textContent = "Refresh"; }
+}
+function onFilter() { STATE.page = 0; render(); }
+function setAuto() { clearInterval(autoTimer); const m = Number(SET.auto); if (m) autoTimer = setInterval(() => refresh(true), m * 60000); }
+
+function openSettings() {
+  $("setSections").innerHTML = Object.entries(SECTIONS).map(([k, l]) => `<label><input type="checkbox" id="sec_${k}" ${SET.sections[k] ? "checked" : ""}> ${l}</label>`).join("");
+  $("setKpis").innerHTML = KPI_DEFS.map(k => `<label><input type="checkbox" id="kpi_${k.key}" ${SET.kpis[k.key] ? "checked" : ""}> ${k.label}</label>`).join("");
+  $("setPeriod").innerHTML = Object.entries(PERIOD_NAMES).filter(([k]) => k !== "custom").map(([k, l]) => `<option value="${k}" ${SET.period === k ? "selected" : ""}>${l}</option>`).join("");
+  $("setAuto").value = SET.auto; $("setRows").value = SET.rows;
+  $("setClosed").value = SET.closed.join("\n"); $("setProducts").value = SET.products.join("\n");
+  $("drawer").hidden = false;
+}
+function saveFromDrawer() {
+  const lines = id => $(id).value.split("\n").map(s => s.trim()).filter(Boolean);
+  const prevKey = SET.closed.join() + SET.products.join();
+  Object.keys(SECTIONS).forEach(k => SET.sections[k] = $("sec_" + k).checked);
+  KPI_DEFS.forEach(k => SET.kpis[k.key] = $("kpi_" + k.key).checked);
+  SET.period = $("setPeriod").value; SET.auto = $("setAuto").value; SET.rows = $("setRows").value;
+  SET.closed = lines("setClosed"); SET.products = lines("setProducts");
+  if (!SET.products.length) SET.products = CONFIG.products.slice();
+  saveSettings(); $("drawer").hidden = true; setAuto();
+  const changedQuery = prevKey !== SET.closed.join() + SET.products.join();
+  if (changedQuery) { buildFilters(); refresh(true); } else render();
+}
+
+function wire() {
+  $("fPeriod").value = SET.period;
+  $("fPeriod").onchange = () => { const c = $("fPeriod").value === "custom"; $("customWrap").hidden = !c; $("customWrap2").hidden = !c; STATE.page = 0; refresh(false); };
+  ["fFrom", "fTo"].forEach(id => $(id).onchange = () => refresh(false));
+  ["fExec", "fStage", "fStatus", "fCat", "fContact"].forEach(id => $(id).onchange = onFilter);
+  let t; $("fSearch").oninput = () => { clearTimeout(t); t = setTimeout(onFilter, 200); };
+  $("btnReset").onclick = () => { ["fExec", "fStage", "fStatus", "fCat", "fContact", "fSearch"].forEach(id => $(id).value = ""); document.querySelectorAll("#fProducts .chip").forEach(c => c.setAttribute("aria-pressed", "false")); STATE.cell = STATE.kpi = null; onFilter(); };
+  $("btnRefresh").onclick = () => refresh(true);
+  $("btnExport").onclick = exportCsv;
+  $("btnSettings").onclick = openSettings;
+  $("btnClose").onclick = () => $("drawer").hidden = true;
+  $("btnSave").onclick = saveFromDrawer;
+  $("btnDefaults").onclick = () => { SET = defaultsSettings(); saveSettings(); $("drawer").hidden = true; buildFilters(); refresh(true); };
+}
+
+function start() { wire(); buildFilters(); setAuto(); refresh(true); }
+if (window.ZOHO && ZOHO.embeddedApp) {
+  ZOHO.embeddedApp.on("PageLoad", () => {});
+  ZOHO.embeddedApp.init().then(start);
+} else {
+  $("stateBox").className = "state err";
+  $("stateBox").textContent = "This dashboard runs inside Zoho CRM. Open it from its CRM tab.";
+}
+</script>
+</body>
+</html>
