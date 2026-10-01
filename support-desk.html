@@ -221,7 +221,8 @@ const CONFIG = {
     refundAmt: "Cashback_Amount", resolution: "Issue_Requires_Replacement_Exchange_Refund1",
     pickupStatus: "Pickup_Status", shipStatus: "Shipping_Status"
   },
-  maxPages: 8 // 2,000 records per page
+  pageSize: 200,
+  maxPages: 60 // up to 12,000 records per query
 };
 const KPI_DEFS = [
   { key:"issues", label:"Issues", note:"by Issue ETA", objective:"down" },
@@ -291,16 +292,17 @@ function inList(arr) { return "(" + arr.map(v => "'" + String(v).replace(/'/g, "
 const SELECT = ["id", ...new Set(Object.values(F))].join(", ");
 
 async function coqlAll(where) {
-  let out = [], offset = 0;
+  // Widget SDK runs COQL on an API version that allows at most 200 rows per call
+  let out = [], offset = 0, size = CONFIG.pageSize;
   for (let page = 0; page < CONFIG.maxPages; page++) {
-    const q = `select ${SELECT} from ${CONFIG.module} where ${where} limit 2000 offset ${offset}`;
+    const q = `select ${SELECT} from ${CONFIG.module} where ${where} limit ${offset}, ${size}`;
     const res = await ZOHO.CRM.API.coql({ select_query: q });
-    if (res && res.code && res.status === "error") throw new Error(res.message || res.code);
+    if (res && res.status === "error") throw new Error(res.message || res.code);
     const rows = (res && (res.data || (res.response && res.response.data))) || [];
     out = out.concat(rows);
     const more = res && res.info && res.info.more_records;
     if (!more || rows.length === 0) break;
-    offset += 2000;
+    offset += size;
   }
   return out;
 }
@@ -310,7 +312,8 @@ async function loadData(fromKey) {
   const d = fromKey;
   const activity = `(${prod} and (${F.issueDate} >= '${d}T00:00:00+05:30' or (${F.fu1} >= '${d}' or (${F.fu2} >= '${d}' or (${F.fu3} >= '${d}' or (${F.pickup} >= '${d}' or (${F.dispatch} >= '${d}' or ${F.refund} >= '${d}'))))))) `;
   const backlog = `(${prod} and ${F.stage} not in ${inList(SET.closed)})`;
-  const [a, b] = await Promise.all([coqlAll(activity), coqlAll(backlog)]);
+  const a = await coqlAll(activity);
+  const b = await coqlAll(backlog);
   const map = new Map();
   for (const r of a.concat(b)) map.set(r.id, r);
   RECORDS = [...map.values()];
@@ -577,7 +580,7 @@ async function refresh(force) {
   const len = daysBetween(a, b) + 1;
   const need = [addDays(a, -len), addDays(b, -13)].sort()[0];
   if (!force && LOADED_FROM && LOADED_FROM <= need) { render(); return; }
-  const from = [need, addDays(todayKey(), -59)].sort()[0];
+  const from = need;
   $("btnRefresh").disabled = true; $("btnRefresh").textContent = "Loading…";
   try {
     await loadData(from);
