@@ -335,20 +335,39 @@ async function coqlAll(where) {
   return out;
 }
 
+// Uses Zoho's standard Search API (same call most CRM widgets use) instead of COQL.
+// Each search is one product + one condition, so it stays far under Zoho's 2,000-result cap.
+async function searchAll(query) {
+  let out = [];
+  for (let page = 1; page <= 10; page++) {
+    const res = await ZOHO.CRM.API.searchRecord({ Entity: CONFIG.module, Type: "criteria", Query: query, page: page, per_page: 200 });
+    if (res && res.status === "error") throw res;
+    const rows = (res && res.data) || [];
+    out = out.concat(rows);
+    if (!(res && res.info && res.info.more_records) || rows.length === 0) break;
+  }
+  return out;
+}
+
 async function loadData(fromKey) {
-  const prod = `${F.product} in ${inList(SET.products)}`;
   const d = fromKey;
-  // Simple one-condition queries: avoids Zoho's limit on nested OR criteria
-  const dateWheres = [
-    `${F.issueDate} >= '${d}T00:00:00+05:30'`,
-    `${F.fu1} >= '${d}'`, `${F.fu2} >= '${d}'`, `${F.fu3} >= '${d}'`,
-    `${F.pickup} >= '${d}'`, `${F.dispatch} >= '${d}'`, `${F.refund} >= '${d}'`
-  ].map(c => `(${prod} and ${c})`);
-  const backlog = `(${prod} and ${F.stage} not in ${inList(SET.closed)})`;
+  const conds = [
+    `(${F.issueDate}:greater_equal:${d}T00:00:00+05:30)`,
+    `(${F.fu1}:greater_equal:${d})`, `(${F.fu2}:greater_equal:${d})`, `(${F.fu3}:greater_equal:${d})`,
+    `(${F.pickup}:greater_equal:${d})`, `(${F.dispatch}:greater_equal:${d})`, `(${F.refund}:greater_equal:${d})`,
+    "(" + SET.closed.map(s => `(${F.stage}:not_equal:${s})`).join("and") + ")"
+  ];
   const map = new Map();
-  for (const w of dateWheres.concat([backlog])) {
-    const rows = await coqlAll(w);
-    for (const r of rows) map.set(r.id, r);
+  let done = 0, total = SET.products.length * conds.length;
+  for (const p of SET.products) {
+    for (const c of conds) {
+      const rows = await searchAll(`((${F.product}:equals:${p})and${c})`);
+      for (const r of rows) {
+        if (r.Issue_Working_Agent && typeof r.Issue_Working_Agent === "object") r["Issue_Working_Agent.Name"] = r.Issue_Working_Agent.name;
+        map.set(r.id, r);
+      }
+      done++; $("stateBox").innerHTML = `<span class="spin"></span>Loading issues from CRM… ${Math.round(done / total * 100)}%`;
+    }
   }
   RECORDS = [...map.values()];
   LOADED_FROM = fromKey;
