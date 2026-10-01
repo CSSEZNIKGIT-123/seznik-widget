@@ -291,18 +291,46 @@ const STATE = { cell: null, kpi: null, page: 0, sortKey: "open", sortDir: -1 };
 function inList(arr) { return "(" + arr.map(v => "'" + String(v).replace(/'/g, "\\'") + "'").join(",") + ")"; }
 const SELECT = ["id", ...new Set(Object.values(F))].join(", ");
 
+function errText(e) {
+  if (!e) return "unknown error";
+  if (typeof e === "string") return e;
+  const parts = [e.code, e.message, e.details && JSON.stringify(e.details)].filter(Boolean);
+  return parts.length ? parts.join(" · ") : JSON.stringify(e).slice(0, 300);
+}
+const isLimitErr = e => /limit/i.test(errText(e));
+
+// One COQL call. Tries "limit offset, count" first, then "limit count offset n" (older API versions).
+let SYNTAX = 0;
+async function coqlPage(where, offset, size) {
+  const forms = [`limit ${offset}, ${size}`, `limit ${size} offset ${offset}`];
+  let lastErr;
+  for (let i = SYNTAX; i < forms.length; i++) {
+    const q = `select ${SELECT} from ${CONFIG.module} where ${where} ${forms[i]}`;
+    try {
+      const res = await ZOHO.CRM.API.coql({ select_query: q });
+      if (res && res.status === "error") throw res;
+      SYNTAX = i;
+      return res || {};
+    } catch (err) { lastErr = err; if (!isLimitErr(err) && !/syntax|invalid/i.test(errText(err))) break; }
+  }
+  throw lastErr;
+}
+
+// Fetch every page; if Zoho says a limit was exceeded, retry with a smaller page size.
 async function coqlAll(where) {
-  // Widget SDK runs COQL on an API version that allows at most 200 rows per call
   let out = [], offset = 0, size = CONFIG.pageSize;
   for (let page = 0; page < CONFIG.maxPages; page++) {
-    const q = `select ${SELECT} from ${CONFIG.module} where ${where} limit ${offset}, ${size}`;
-    const res = await ZOHO.CRM.API.coql({ select_query: q });
-    if (res && res.status === "error") throw new Error(res.message || res.code);
-    const rows = (res && (res.data || (res.response && res.response.data))) || [];
+    let res;
+    try { res = await coqlPage(where, offset, size); }
+    catch (err) {
+      if (isLimitErr(err) && size > 50) { size = Math.floor(size / 2); page--; continue; }
+      throw err;
+    }
+    const rows = res.data || (res.response && res.response.data) || [];
     out = out.concat(rows);
-    const more = res && res.info && res.info.more_records;
+    const more = res.info && res.info.more_records;
     if (!more || rows.length === 0) break;
-    offset += size;
+    offset += rows.length;
   }
   return out;
 }
@@ -310,12 +338,18 @@ async function coqlAll(where) {
 async function loadData(fromKey) {
   const prod = `${F.product} in ${inList(SET.products)}`;
   const d = fromKey;
-  const activity = `(${prod} and (${F.issueDate} >= '${d}T00:00:00+05:30' or (${F.fu1} >= '${d}' or (${F.fu2} >= '${d}' or (${F.fu3} >= '${d}' or (${F.pickup} >= '${d}' or (${F.dispatch} >= '${d}' or ${F.refund} >= '${d}'))))))) `;
+  // Simple one-condition queries: avoids Zoho's limit on nested OR criteria
+  const dateWheres = [
+    `${F.issueDate} >= '${d}T00:00:00+05:30'`,
+    `${F.fu1} >= '${d}'`, `${F.fu2} >= '${d}'`, `${F.fu3} >= '${d}'`,
+    `${F.pickup} >= '${d}'`, `${F.dispatch} >= '${d}'`, `${F.refund} >= '${d}'`
+  ].map(c => `(${prod} and ${c})`);
   const backlog = `(${prod} and ${F.stage} not in ${inList(SET.closed)})`;
-  const a = await coqlAll(activity);
-  const b = await coqlAll(backlog);
   const map = new Map();
-  for (const r of a.concat(b)) map.set(r.id, r);
+  for (const w of dateWheres.concat([backlog])) {
+    const rows = await coqlAll(w);
+    for (const r of rows) map.set(r.id, r);
+  }
   RECORDS = [...map.values()];
   LOADED_FROM = fromKey;
 }
@@ -590,7 +624,7 @@ async function refresh(force) {
     render();
   } catch (e) {
     $("stateBox").hidden = false; $("stateBox").className = "state err";
-    $("stateBox").textContent = "Couldn't load issues from CRM: " + (e && (e.message || e.code) || e) + ". Check that you can open the Seznik Automation module, then press Refresh.";
+    $("stateBox").textContent = "Couldn't load issues from CRM. Zoho said: " + errText(e) + ". Send this message to whoever set up the dashboard.";
   } finally { $("btnRefresh").disabled = false; $("btnRefresh").textContent = "Refresh"; }
 }
 function onFilter() { STATE.page = 0; render(); }
