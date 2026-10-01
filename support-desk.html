@@ -632,7 +632,11 @@ function wire() {
 function start() { wire(); buildFilters(); setAuto(); refresh(true); }
 if (window.ZOHO && ZOHO.embeddedApp) {
   ZOHO.embeddedApp.on("PageLoad", () => {});
-  ZOHO.embeddedApp.init().then(start);
+  ZOHO.embeddedApp.init().then(() => {
+    // When opened from a button, make the popup as large as Zoho allows
+    try { ZOHO.CRM.UI.Resize({ height: String(Math.max(700, screen.availHeight - 120)), width: String(Math.max(1000, screen.availWidth - 80)) }); } catch (e) {}
+    start();
+  });
 } else {
   $("stateBox").className = "state err";
   $("stateBox").textContent = "This dashboard runs inside Zoho CRM. Open it from its CRM tab.";
